@@ -1,80 +1,99 @@
 import 'dart:developer';
+import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:local_notificationss/value_screen.dart';
-import 'package:timezone/data/latest_all.dart' as tz;
-import 'package:timezone/timezone.dart' as tz;
+import '../main.dart';
 
 class NotificationService {
-  final BuildContext context;
-  final FlutterLocalNotificationsPlugin _notificationsPlugin =
-      FlutterLocalNotificationsPlugin();
+  final _firebaseMessaging = FirebaseMessaging.instance;
 
-  NotificationService(this.context) {
-    _initializeNotifications();
-  }
+  Future<void> initNotification() async {
+    await _firebaseMessaging.requestPermission();
 
-  void _initializeNotifications() async {
-    tz.initializeTimeZones();
+    String? apnsToken;
 
-    const AndroidInitializationSettings androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    if (Platform.isIOS) {
+      while (apnsToken == null) {
+        apnsToken = await _firebaseMessaging.getAPNSToken();
+        if (apnsToken == null) {
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+      }
+    }
 
-    const DarwinInitializationSettings iosSettings =
-        DarwinInitializationSettings();
+    final fcmToken = await _firebaseMessaging.getToken();
 
-    const InitializationSettings settings =
-        InitializationSettings(android: androidSettings, iOS: iosSettings);
+    log('FCM TOKEN: $fcmToken');
+    initPushNotification();
+    await FirebaseMessaging.instance
+        .setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
 
-    await _notificationsPlugin.initialize(settings,
-        onDidReceiveNotificationResponse: (NotificationResponse response) {
-      log("Notification bosildi: ${response.payload}");
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => ValueScreen(
-            value: response.payload.toString(),
-          ),
-        ),
-      );
+    // initialiaze local notification plugin
+    final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+        FlutterLocalNotificationsPlugin();
+
+    // android channel ma'lumotlari
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      'high_importance_channel', // id
+      'High Importance Notifications', // title
+      description:
+          'This channel is used for important notifications.', // description
+      importance: Importance.max,
+    );
+
+    // android uchun channel yaratish
+    await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+
+    // notification eshitib turish uchun
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      final notification = message.notification;
+      final android = message.notification?.android;
+
+      // If `onMessage` is triggered with a notification, construct our own
+      // local notification to show to users using the created channel.
+      if (notification != null && android != null) {
+        flutterLocalNotificationsPlugin.show(
+            payload: message.data['message'],
+            notification.hashCode,
+            notification.title,
+            notification.body,
+            NotificationDetails(
+              android: AndroidNotificationDetails(
+                channel.id,
+                channel.name,
+                channelDescription: channel.description,
+                icon: '@mipmap/ic_launcher',
+              ),
+            ));
+      }
     });
   }
 
-  Future<void> showNotification() async {
-    const AndroidNotificationDetails androidDetails =
-        AndroidNotificationDetails('channel_id', 'General Notifications',
-            importance: Importance.high, priority: Priority.high);
+  void handleMessage(RemoteMessage? message) {
+    log(message.toString());
+    if (message == null) return;
 
-    const NotificationDetails details =
-        NotificationDetails(android: androidDetails);
+    log(message.data.toString());
 
-    await _notificationsPlugin.show(
-      0,
-      "Bir martalik notification",
-      "Bu Flutter Local Notification misoli",
-      details,
-      payload: "Bir martalik notification bosildi",
-    );
+    navigatorKey.currentState
+        ?.pushNamed('/notification_screen', arguments: message);
   }
 
-  Future<void> scheduleNotification() async {
-    const AndroidNotificationDetails androidDetails =
-        AndroidNotificationDetails('channel_id', 'Scheduled Notifications',
-            importance: Importance.high, priority: Priority.high);
+  Future initPushNotification() async {
+    FirebaseMessaging.instance.getInitialMessage().then(handleMessage);
 
-    const NotificationDetails details =
-        NotificationDetails(android: androidDetails);
+    FirebaseMessaging.onMessageOpenedApp.listen(handleMessage);
+  }
 
-    await _notificationsPlugin.zonedSchedule(
-      1,
-      "Rejalashtirilgan Notification",
-      "Bu bildirishnoma 5 soniyadan keyin chiqadi",
-      tz.TZDateTime.now(tz.local).add(Duration(seconds: 5)),
-      details,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      androidScheduleMode: AndroidScheduleMode.exact,
-      payload: "Rejalashtirilgan notification bosildi!",
-    );
+  Future<void> sendMessage(RemoteMessage? message) async {
+    await _firebaseMessaging.subscribeToTopic('');
   }
 }

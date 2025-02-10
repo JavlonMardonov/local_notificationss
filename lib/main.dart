@@ -1,10 +1,17 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'notification_service.dart';
+import 'package:local_notificationss/firebase_options.dart';
+import 'package:local_notificationss/notification_service.dart';
+import 'package:local_notificationss/value_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await NotificationService().initNotification();
   runApp(MyApp());
 }
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey();
 
 class MyApp extends StatelessWidget {
   MyApp({super.key});
@@ -12,6 +19,19 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
+      routes: {
+        // '/': (context) => HomeScreen(),
+        '/notification_screen': (context) => ValueScreen(
+              value: 'context',
+            ),
+      },
+      title: 'Flutter Demo',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+      ),
+      initialRoute: "/",
       debugShowCheckedModeBanner: false,
       home: HomeScreen(),
     );
@@ -28,18 +48,7 @@ class HomeScreen extends StatelessWidget {
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ElevatedButton(
-              onPressed: () => NotificationService(context)..showNotification(),
-              child: Text("Bir martalik Notification Yuborish"),
-            ),
-            SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () =>
-                  NotificationService(context)..scheduleNotification(),
-              child: Text("Rejalashtirilgan Notification yuborish"),
-            ),
-          ],
+          children: [],
         ),
       ),
     );
